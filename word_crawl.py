@@ -12,6 +12,7 @@ import json
 import mimetypes
 import glob
 import magic
+from binaryornot.check import is_binary
 
 
 from word_crawl_helpers import is_valid_regex
@@ -22,6 +23,7 @@ def main(pattern: str,
          excluded_subdirectories:tuple= ('.git', '.idea'),
          excluded_extensions:list=None,
          included_extensions:list=None,
+         keep_binary_files:bool=False,
          pattern_is_regex=True):
 	"""
 
@@ -31,6 +33,7 @@ def main(pattern: str,
 		It can contain both files and directories
 	:param excluded_extensions: A list of file extensions to ignore
 	:param included_extensions: A list of file extensions to include
+	:param keep_binary_files: If False, binary files (as per binaryornot library, which is imperfect) are removed from the search list
 	:param pattern_is_regex: A flag that tells us wheter to treat the pattern argument as a regex or not.
 		Default is true
 	:return:  #TODO:  What are we actually returning here?  Fill out the type hint as well
@@ -52,6 +55,9 @@ def main(pattern: str,
 	# if it's falsy, default to a list with cwd in it
 	if not base_paths:
 		base_paths = [os.getcwd()]
+
+	if type(base_paths) is str:
+		base_paths = [base_paths]
 
 	# Make sure that each of the base paths exists
 	for p in base_paths:
@@ -92,7 +98,7 @@ def main(pattern: str,
 
 	"""
 	Traverse the list of input paths and build a list of ALL files beneath that path.  
-	We'll reduce it shortly based on the included or excluded extensions list
+	We'll reduce it shortly based on the included or excluded extensions list and other arguments
 	"""
 	all_files_beneath_paths = []
 	for p in base_paths:
@@ -154,19 +160,33 @@ def main(pattern: str,
 		files_to_inspect = all_files_beneath_paths
 
 	"""
-	Remove files that are binary (That is: Not text).  No need to search those
+	Remove binary files, as applicable
 	"""
-	for f in reversed(files_to_inspect):
-		# print(f"{f} is guess to be a file of type:  {mimetypes.guess_type(f)[1]}")
-		print(f"{f} is guessed to be a file of type: {magic.from_file(f)}")
 
+	if keep_binary_files is False:
+		for f in reversed(files_to_inspect):
+			try:
 
+				is_bin = is_binary(filename=f)
 
+				if is_bin:
+					print(f"{f} appears to be a binary file.  It will be removed from the inspection list", file=sys.stderr)
+					files_to_inspect.remove(f)
+				# else:
+				# 	print(f"{f} appears to contain searchable text")
 
-	pass  # You can put a breakpoint here when you're just getting started
+			except FileNotFoundError as ex:
+				print(f"Encountered exception when trying to open the file '{f}'.  It probably doesn't exist anymore.\n{ex}",
+				      file=sys.stderr)
+
+	"""
+	At last, we have a list of files we feel are worth inspecting
+	"""
+	print(f"There are {len(files_to_inspect)} files left to inspect.")
+
 
 
 if __name__ == '__main__':
-	main(pattern=r'(wo)?m(a|e)n')
+	main(pattern=r'(wo)?m(a|e)n', base_paths='/Users/areese/Downloads')
 
 
