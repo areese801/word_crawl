@@ -277,7 +277,7 @@ def main(regex_pattern: str,
 
 if __name__ == '__main__':
 	argp = argparse.ArgumentParser()
-	argp.add_argument('-p', '--regex-pattern', required=True, help="A regular expression to search for within files.")
+	argp.add_argument('-p', '--regex-pattern', required=False, help="A regular expression to search for within files.")
 	argp.add_argument('-s', '--search-paths', required=False, help="A path or comma-separated list of paths to search "
 	                                                               "within for the pattern.")
 	argp.add_argument('-x', '--excluded-subdirectories', required=False, help="A comma-separated list of short "
@@ -309,13 +309,41 @@ if __name__ == '__main__':
 	                                                              "file.  This is useful for defining search parameters "
 	                                                              "for common tasks")
 
-	args = argp.parse_args()
+	args = vars(argp.parse_args()) #Coerces the args Namespace object to a dictionary
+	config_file = args.get('config_file')
 
-	print("!")
+	# if the config file argument was passed inject those defaults into the args dict
+	if config_file is not None:
+		config_file = os.path.expanduser(config_file)
+
+		# Validate that it exists
+		if not os.path.isfile(config_file):
+			raise FileNotFoundError(f"The config file '{config_file}' does not exist.  Please try again")
+
+		# Read it
+		with open(config_file, 'r') as f:
+			s = f.read()
+			j = json.loads(s)
+
+		# For any key in the config thta is not already set in arguments, add it in
+		for k in j.keys():
+			v = j[k]
+
+			# See if the key is already in the args object
+			v1 = args.get(k)
+
+			if v1 is None:
+				args[k] = v
+				print(f"Set the argument for '{k}' to the value '{v}', read from the config file '{config_file}'")
+			else:
+				print(f"The key '{k}' was read from the config file, '{config_file}', but the same argument was already "
+				      f"passed in from the command line.  The CLI argument will supersede that which was ready from the "
+				      f"config file", file=sys.stderr)
+
 
 	# reg_pattern = r'(big)?\ *(BIRD|maN)'
 	# main(pattern=reg_pattern, base_paths=['/Users/areese/projects/word_crawl/test_data', '~/Downloads'], included_extensions=['.txt', '.json'], print_json=True)
-	# # main(pattern=reg_pattern, base_paths=['/Users/areese/projects/word_crawl/test_data', '~/Downloads'])
+	# main(pattern=reg_pattern, base_paths=['/Users/areese/projects/word_crawl/test_data', '~/Downloads'])
 
 
 

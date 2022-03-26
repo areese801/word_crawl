@@ -1,0 +1,7 @@
+{
+    "excluded_subdirectories": [".git", ".idea"],
+    "excluded_extensions": [".log"],
+    "included_extensions": "",
+    "include_binary_files": false,
+    "print_json": false
+}
