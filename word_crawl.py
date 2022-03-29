@@ -365,7 +365,12 @@ def main(regex_pattern: str,
 
 
 if __name__ == '__main__':
-	argp = argparse.ArgumentParser()
+	program_description = "A python utility to search for a regex or string literal within one or more files or lists of" \
+	                      " directories.  This is useful when you're not quite sure what you're looking for but you know" \
+	                      " it's (probably / maybe there).  There are lots of flags to influence what is included or " \
+	                      "excluded, verbosity, and so on.  The best way to see the 'documentation is to invoke the " \
+	                      "program with the -h (help) flag like this:\n python3 word_crawl.py -h"
+	argp = argparse.ArgumentParser(description=program_description)
 	argp.add_argument('-p', '--regex-pattern', required=False, help="A regular expression to search for within files.  "
 	                                                                "While it is not required to be passed in directly "
 	                                                                "from the command line, it is required to be "
