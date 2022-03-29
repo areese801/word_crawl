@@ -76,5 +76,113 @@ If set to True, the regex pattern will be escaped, effectively making it a strin
 If set to True, the program will be more verbose.
 
 
-`-c [CONFIG_FILE], --config-file [CONFIG_FILE]` A complete path to a json config file where the keys would match the names of the arguments available to the main program. Arguments passed into the program via the CLI will supersede any found int he config file. This is useful for defining search parameters for common tasks. if not supplied, 'conf.json' is sought.
+`-c [CONFIG_FILE], --config-file [CONFIG_FILE]` A complete path to a json config file where the keys would match the names of the arguments available to the main program. Arguments passed into the program via the CLI will supersede any found in the config file. This is useful for defining search parameters for common tasks. if not supplied, 'conf.json' is sought.
+
+## Basic Examples
+These are just some simple examples to convey the general idea.  See the help file (Invoke the program with the `-h` flag, or simply read above) for more advanced usage.
+
+
+Given this regular expression example, `(big[\ ]?)?b[ei]r[td]([\ ]?man)?`, which would match strings (case-insensitive) like these:
+
+`bert` `bird` `bigbird` `Big Bird` `birdman` `Bird Man`
+
+
+### Search for matches under cwd that match the regex (nested), limited to just .txt files
+`python3 word_crawl.py -p '(big[\ ]?)?b[ei]r[td]([\ ]?man)?' -i '.txt'`
+
+#### Example Output
+```
+The main program was invoked with the following runtime arguments:
+regex_pattern = (big[\ ]?)?b[ei]r[td]([\ ]?man)?
+search_paths = None
+excluded_extensions = None
+included_extensions = ['.txt']
+include_binary_files = False
+print_json = False
+escape_pattern = False
+verbose = False
+kwargs = {'config_file': None}
+excluded_subdirectories = None
+Files beneath these paths will be inspected if still based on arguments passed into this program:
+	/Users/areese/projects/word_crawl
+Found 1122 total files under base path(s).
+Reduced the file list based on the extension whitelist (['.txt']).  There are 15 files to inspect.
+Looking for files that seem to be binary.  These will be removed from the inspection list...
+Removed 0 binary files from the inspection list.
+There are 15 files left to inspect.
+File Name = /Users/areese/projects/word_crawl/test_data/file2.txt	All Matches = 2	Unique Matches = 2	Matched Strings = ["bird man", "big bird man"]
+File Name = /Users/areese/projects/word_crawl/test_data/file1.txt	All Matches = 6	Unique Matches = 6	Matched Strings = ["bert", "bird", "bigbird", "Big Bird", "birdman", "Bird Man"]
+2 files out of 15 inspected files (0.13333333333333333) contained one or more match for the pattern '(big[\ ]?)?b[ei]r[td]([\ ]?man)?'
+```
+
+### For lovers of JSON
+Simply append a `-j` flag.  Note the `BEGIN/END JSON Results` markers.  You can use these as anchor points for downstream consumers of this program to parse out JSON results only
+
+`python3 ~/scripts/word_crawl.py -p '(big[\ ]?)?b[ei]r[td]([\ ]?man)?' -i '.txt' -j`
+
+#### Example output
+
+```
+The main program was invoked with the following runtime arguments:
+regex_pattern = (big[\ ]?)?b[ei]r[td]([\ ]?man)?
+search_paths = None
+excluded_extensions = None
+included_extensions = ['.txt']
+include_binary_files = False
+print_json = True
+escape_pattern = False
+verbose = False
+kwargs = {'config_file': None}
+excluded_subdirectories = None
+Files beneath these paths will be inspected if still based on arguments passed into this program:
+	/Users/areese/projects/word_crawl
+Found 1122 total files under base path(s).
+Reduced the file list based on the extension whitelist (['.txt']).  There are 15 files to inspect.
+Looking for files that seem to be binary.  These will be removed from the inspection list...
+Removed 0 binary files from the inspection list.
+There are 15 files left to inspect.
+BEGIN JSON Results:
+[
+    {
+        "file_name": "/Users/areese/projects/word_crawl/test_data/file2.txt",
+        "pattern": "(big[\\ ]?)?b[ei]r[td]([\\ ]?man)?",
+        "match_count": 2,
+        "unique_match_count": 2,
+        "matched_strings": [
+            "bird man",
+            "big bird man"
+        ],
+        "unique_matched_strings": [
+            "bird man",
+            "big bird man"
+        ]
+    },
+    {
+        "file_name": "/Users/areese/projects/word_crawl/test_data/file1.txt",
+        "pattern": "(big[\\ ]?)?b[ei]r[td]([\\ ]?man)?",
+        "match_count": 6,
+        "unique_match_count": 6,
+        "matched_strings": [
+            "bert",
+            "bird",
+            "bigbird",
+            "Big Bird",
+            "birdman",
+            "Bird Man"
+        ],
+        "unique_matched_strings": [
+            "bert",
+            "bird",
+            "bigbird",
+            "Big Bird",
+            "birdman",
+            "Bird Man"
+        ]
+    }
+]
+END JSON Results:
+2 files out of 15 inspected files (0.13333333333333333) contained one or more match for the pattern '(big[\ ]?)?b[ei]r[td]([\ ]?man)?'
+```
+
+
 

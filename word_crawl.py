@@ -413,7 +413,7 @@ if __name__ == '__main__':
 	argp.add_argument('-c', '--config-file', required=False, nargs='?', const='conf.json',
 	                  help="A complete path to a json config file where the keys would match the names of the arguments "
 	                       "available to the main program.  Arguments passed into the program via the CLI will supersede"
-	                       " any found int he config file.  This is useful for defining search parameters for common tasks."
+	                       " any found in the config file.  This is useful for defining search parameters for common tasks."
 	                       " if not supplied, 'conf.json' is sought.")
 
 	args = vars(argp.parse_args()) #Coerces the args Namespace object to a dictionary
