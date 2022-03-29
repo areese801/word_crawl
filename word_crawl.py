@@ -11,55 +11,125 @@ import re
 import sys
 import json
 from binaryornot.check import is_binary
-from word_crawl_helpers import is_valid_regex
 
 
 def main(regex_pattern: str,
          search_paths:list=None,
-         excluded_subdirectories:list= ['.git', '.idea'],
+         excluded_subdirectories:list=['.git', '.idea'],
          excluded_extensions:list=None,
          included_extensions:list=None,
          include_binary_files:bool=False,
          print_json:bool=False,
+         escape_pattern:bool=False,
+         verbose=False,
          **kwargs) -> list :
+
+	"""
+	:param regex_pattern: A regex pattern to search for.  To search for a literal, set the escape_pattern arg to True.
+	:param search_paths: A list of paths to walk (that is:  Look at every file within).  If not specified, cwd is assumed.
+	:param excluded_subdirectories: A list of subdirectories (as returned by os.path.basename, without parent paths) to
+		exclude.  Example: ['.git', '.idea']
+	:param excluded_extensions: A list of file extensions to ignore, including the preceding dot '.' character
+		Example: ['.log', '.tmp'].
+		Note that the args excluded_extensions and included_extensions are mutually exclusive.
+	:param included_extensions:   A list of file extensions to include, including the preceding dot '.' character
+		Example: ['.csv', '.xml'].
+		Note that the args excluded_extensions and included_extensions are mutually exclusive.
+	:param include_binary_files: Set to True to search for patterns within files that appear to be binary.
+		Under the hood, we're using the binaryornot library, which is imperfect but does a good job.
+		According to its documentation, binaryornot errs on the side of false positives
+		(That is, classifying a binary file as text)
+	:param print_json: Set to True to suppress standard messages printed to stdout in favor of a single JSON payload
+		printed to stdout.  Keep in mind that other (non-JSON) messages might be printed as the program runs, but the
+		clever programmer will leverage sed, awk, grep, jq, etc. to retrieve what is needed
+	:param escape_pattern: Set to true to escape the regex_pattern, effectively coercing it into a string literal
+		Under the hood, searches are still facilitated by using the re library, so that we can process capture groups
+	:param verbose: Set to True to print more messages.  Set to False (Default) to print fewer messages.
+	:return: A list of dictionaries that describe each match found
 	"""
 
 
-	:param print_json: If set to True results will not be printed to stdout.  Instead, the final JSON payload will be printed
-	:param regex_pattern: A regex pattern to search for.
-	:param search_paths: A list of paths to walk (that is:  Look at every file within).  If not specified, cwd is assumed
-		The list of files collected from these paths will be subsequently pruned based on the other arguments
-	:param excluded_subdirectories: A list of subdirectories (as returned by os.path.basepath, without parent paths) to exclude.  Like '.git'
-		It can contain both files and directories
-	:param excluded_extensions: A list of file extensions to ignore
-	:param included_extensions: A list of file extensions to include
-	:param include_binary_files: If False, binary files (as per binaryornot library, which is imperfect) are removed from the search list
-	:return list:  A list of dictionaries that describe each match
+	"""
+	Validate arguments
 	"""
 
-	#TODO:  Clean up all print messages.f
+	prog_vars = vars().copy()
+	print(f"The main program was invoked with the following runtime arguments:")
+	for k in prog_vars.keys():
+		v = prog_vars[k]
+		print(f"{k} = {v}")
+
+	# Coerce patterns made up of numbers only to string.
+	if type(regex_pattern) in (int, float):
+		regex_pattern = str(regex_pattern)
+
+	# Validation #1 :  Regex pattern must be a non-null string
+	if type(regex_pattern) is not str or regex_pattern == "":
+		raise ValueError(f"The value for regex pattern must be a non-null string.  Got {type(regex_pattern)}")
+
+	# Validation #2 :  list-like things must be a list (or tuple)
+	for itm in prog_vars.keys():
+		if itm not in [search_paths, excluded_subdirectories, excluded_extensions, included_extensions]:
+			continue
+
+		if itm is not None and type(itm) not in [list, tuple]:
+			raise TypeError(f"The item {itm}, if supplied should be a list (or tuple).  Got {type(itm)}.  "
+			                f"If passed from the command line, please use quoted, comma-separated values")
+
+
+	# Validation #3:  Boolean things should be boolean:
+	for itm in prog_vars.keys():
+		if itm not in [include_binary_files, print_json, escape_pattern]:
+			continue
+
+		if itm is None:
+			continue
+
+		if type(itm) is not bool or str(itm) not in ["True", "False"]:
+			raise TypeError(f"All boolean arguments should be either True or False.  Got {type(itm)} for the variable {itm}")
+
+	# Validation #4:  included_extensions and excluded_extensions are mutually exclusive arguments.
+	if included_extensions and excluded_extensions:
+		raise ValueError(f"Both the included_extensions and excluded_extensions arguments where supplied.  "
+		                 f"Only one should be passed into the program.  Got:\n Included Extensions: {included_extensions}"
+		                 f"\n Excluded Extensions:  {excluded_extensions}")
+
+
 
 	"""
 	Handle pattern
 	"""
-	regex_pattern = str(regex_pattern)
-	if not is_valid_regex(test_value=regex_pattern):
-		raise ValueError(f"The value [{regex_pattern}] cannot be compiled as a regex!")
+
+	# Escape the regex pattern as applicable (To treat as a string literal)
+	if escape_pattern is True:
+		regex_pattern = re.escape(pattern=regex_pattern)
+		print(f"The argument 'escape_pattern' was {escape_pattern}, therefore the pattern has been escaped.  The new "
+		      f"value for the pattern is: {regex_pattern}")
+
+	# Before we get too deep with the rest of the program, make sure that the regex will compile
+	try:
+		r = re.compile(pattern=regex_pattern)
+	except Exception as ex:
+		print(f"The input value [{regex_pattern}] cannot be compiled into a regex.  Please double check the syntax "
+		      f"(Do you need to set escape_pattern to true?.  This can be done with the '-z' flag from the CLI)  "
+		      f"Got exception:\n{ex}", file=sys.stderr)
+		raise ex
+
 
 	"""
-	Handle base paths
+	Handle search paths.  These can be a list of file names, or paths to search within or a mix of both
 	"""
 
 	# Default to cwd if not passed
 	if not search_paths:
 		search_paths = [os.getcwd()]
 
-	# If just a string was passed, wrap it up in a list
+	# If just a string was passed, wrap it up in a list, so we can iterate over it later
 	if type(search_paths) is str:
 		search_paths = [search_paths]
 
 	# Expand user to allow things like ~/Downloads to work correctly
-	search_paths = [os.path.expanduser(p) for p in search_paths]
+	search_paths = [os.path.expanduser(str(p)) for p in search_paths]
 
 	# Make sure that each of the base paths exists
 	for p in search_paths:
@@ -67,7 +137,17 @@ def main(regex_pattern: str,
 			raise FileNotFoundError(f"'{p}' is not a directory or a file.  Please remove it from base_paths and try again.")
 
 	"""
-	Handle the excluded and included file extensions list.  Excluded supersedes included
+	Handle excluded_subdirectories
+	"""
+	if excluded_subdirectories is None:
+		excluded_subdirectories = []
+
+	if type(excluded_subdirectories) is not list:
+		excluded_subdirectories = [excluded_subdirectories]
+
+
+	"""
+	Handle the excluded and included file extensions list.
 	"""
 
 	# Coerce falsy values to a list
@@ -91,11 +171,6 @@ def main(regex_pattern: str,
 				lst.remove(item)
 				lst.append(f".{item}")
 
-	# We should only have an inclusion list or an exclusion list (or neither), but not both
-	if len(included_extensions) >0 and len(excluded_extensions) >0:
-		raise ValueError(f"Both the included_extensions and excluded_extensions arguments where supplied.  "
-		                 f"Only one should be passed into the program.  Got:\n Included Extensions: {included_extensions}"
-		                 f"\n Excluded Extensions:  {excluded_extensions}")
 
 
 	"""
@@ -178,19 +253,28 @@ def main(regex_pattern: str,
 	"""
 
 	if include_binary_files is False:
+		binary_files_removed = 0
 		print(f"Looking for files that seem to be binary.  These will be removed from the inspection list...")
+
 		for f in reversed(files_to_inspect):
 			try:
 				is_bin = is_binary(filename=f)
 
 				if is_bin:
-					print(f"{f} seems to be a binary file.  It will be removed from the inspection list.", file=sys.stderr)
+					if verbose:
+						print(f"{f} seems to be a binary file.  It will be removed from the inspection list.", file=sys.stderr)
+
 					files_to_inspect.remove(f)
+					binary_files_removed += 1
 
 			except FileNotFoundError as ex:
-				print(f"Encountered exception when trying to open the file '{f}'.  It probably doesn't exist anymore.\n{ex}",
-				      file=sys.stderr)
+				if verbose:
+					print(f"Encountered exception when trying to open the file '{f}'.  It probably doesn't exist anymore."
+					      f"\n{ex}",file=sys.stderr)
 				files_to_inspect.remove(f)
+
+		print(f"Removed {binary_files_removed} binary files from the inspection list.")
+
 	else:
 		print(f"All remaining files, including those that appear to be binary will be inspected")
 
@@ -205,14 +289,16 @@ def main(regex_pattern: str,
 	all_results = [] # We'll append into this
 
 	for f in files_to_inspect:
-		# print(f"Searching the file '{f}' for the pattern '{pattern}'", file=sys.stderr)
+		if verbose:
+			print(f"Searching the file '{f}' for the pattern '{regex_pattern}'")
 
 		try:
 			with open(f, 'r') as f1:
 				try:
 					f_str = f1.read()
 				except UnicodeDecodeError as ex:
-					print(f"Got UnicodeDecodeError when trying to read the file '{f}'. {ex}", file=sys.stderr)
+					if verbose:
+						print(f"Got UnicodeDecodeError when trying to read the file '{f}'. {ex}", file=sys.stderr)
 					f1.close()
 					continue
 		except FileNotFoundError as ex1:
@@ -227,9 +313,12 @@ def main(regex_pattern: str,
 
 		# Process the match results
 		if results is None:
-			print(f"No Matches found in the file '{f}' for the pattern '{regex_pattern}", file=sys.stderr)
+			if verbose:
+				print(f"No Matches found in the file '{f}' for the pattern '{regex_pattern}")
 		else:
 			# There was a regex  match!
+
+			# Make list of all matches and unique matches
 			running_list = []
 			unique_list = []
 
@@ -240,10 +329,8 @@ def main(regex_pattern: str,
 				if match not in unique_list:
 					unique_list.append(match)
 
+			# Print a message about what we found (or don't and save it to print to JSON later)
 			if len(running_list) >0:
-				# print(f"There were {len(running_list)} matches, {len(unique_list)} of which were unique for the "
-				#       f"pattern '{pattern}' in the file '{f}'.  Unique Matches: {str(unique_list)}")
-				#
 
 				if print_json is False:
 					print(f"File Name = {f}"
@@ -251,16 +338,17 @@ def main(regex_pattern: str,
 					      f"\tUnique Matches = {len(unique_list)}"
 					      f"\tMatched Strings = {json.dumps(unique_list)}")
 
-				# Assemble results
+				# Assemble results and put them into the final payload object
 				tmp = dict(file_name=f, pattern=regex_pattern, match_count=len(running_list),
 				           unique_match_count=len(unique_list), matched_strings=running_list,
 				           unique_matched_strings=unique_list)
 				all_results.append(tmp)
 
 			else:
-				# print(f"There were 0 matches for the pattern '{pattern}' in the file '{f}", file=sys.stderr)
-				pass
+				if verbose:
+					print(f"There were 0 matches for the pattern '{regex_pattern}' in the file '{f}")
 
+	# We now have the final payload to return and/or print
 	ret_val = all_results
 
 	# Print as JSON as applicable
@@ -269,7 +357,7 @@ def main(regex_pattern: str,
 		print(json.dumps(ret_val, indent=4))
 		print("END JSON Results:")
 
-	# Final report
+	# Final summary of all findings
 	print(f"{len(all_results)} files out of {len(files_to_inspect)} inspected files ({len(all_results) / len(files_to_inspect)}) "
 	      f"contained one or more match for the pattern '{regex_pattern}'")
 
@@ -278,7 +366,12 @@ def main(regex_pattern: str,
 
 if __name__ == '__main__':
 	argp = argparse.ArgumentParser()
-	argp.add_argument('-p', '--regex-pattern', required=False, help="A regular expression to search for within files.")
+	argp.add_argument('-p', '--regex-pattern', required=False, help="A regular expression to search for within files.  "
+	                                                                "While it is not required to be passed in directly "
+	                                                                "from the command line, it is required to be "
+	                                                                "supplied one way or another (i.e. via a config file)."
+	                                                                "  See corresponding argument.")
+
 	argp.add_argument('-s', '--search-paths', required=False, help="A path or comma-separated list of paths to search "
 	                                                               "within for the pattern.")
 	argp.add_argument('-x', '--excluded-subdirectories', required=False, help="A comma-separated list of short "
@@ -294,34 +387,44 @@ if __name__ == '__main__':
 	                                                                     " subject to search (e.g. '.json, .csv').  All "
 	                                                                     "others will be ignored")
 
-	argp.add_argument('-b', '--include-binary-files', required=False, help="If set to True, files that appear to be "
-	                                                                       "Binary (detection works well but is "
-	                                                                       "imperfect) will be included in the search.  "
-	                                                                       "Otherwise they'll be omitted")
+	argp.add_argument('-b', '--include-binary-files', required=False, action='store_true',
+	                  help="If set to True, files that appear to be Binary (detection works well but is imperfect) will "
+	                       "be included in the search.  Otherwise they'll be omitted")
 
-	argp.add_argument('-j', '--json', required=False, help="If set to True, the results will be printed as JSON along "
-	                                                       "with other printed messages.  A tool like sed can be used to"
-	                                                       " parse out only the JSON result from stdout")
+	argp.add_argument('-j', '--print-json', required=False, action='store_true', help="If set to True, the results will be "
+	                                                                            "printed as JSON along with other "
+	                                                                            "printed messages.  A tool like sed can"
+	                                                                            " be used to parse out only the JSON "
+	                                                                            "result from stdout")
 
-	argp.add_argument('-c', '--config-file', required=False, help="A complete path to a json config file where the keys "
-	                                                              "would match the names of the arguments available to "
-	                                                              "the main program.  Arguments passed into the program "
-	                                                              "via the CLI will supersede any found int he config "
-	                                                              "file.  This is useful for defining search parameters "
-	                                                              "for common tasks")
+	argp.add_argument('-z', '--escape-pattern', required=False, action='store_true',
+	                  help="If set to True, the regex pattern will be escaped, effectively making it a string literal "
+	                       "to search for.  The python 're' library is still used under the hood so we can make use of "
+	                       "capture groups")
+
+	argp.add_argument('-v', '--verbose', required=False, action='store_true', help="If set to True, the program will be "
+	                                                                               "more verbose.")
+
+	argp.add_argument('-c', '--config-file', required=False, nargs='?', const='conf.json',
+	                  help="A complete path to a json config file where the keys would match the names of the arguments "
+	                       "available to the main program.  Arguments passed into the program via the CLI will supersede"
+	                       " any found int he config file.  This is useful for defining search parameters for common tasks."
+	                       " if not supplied, 'conf.json' is sought.")
 
 	args = vars(argp.parse_args()) #Coerces the args Namespace object to a dictionary
 	config_file = args.get('config_file')
 
-	# if the config file argument was passed inject those defaults into the args dict
+	"""
+	If the config file argument was passed inject those defaults into the args dict
+	"""
 	if config_file is not None:
 		config_file = os.path.expanduser(config_file)
 
-		# Validate that it exists
+		# Validate that the config file actually exists
 		if not os.path.isfile(config_file):
 			raise FileNotFoundError(f"The config file '{config_file}' does not exist.  Please try again")
 
-		# Read it
+		# Read the config file as a json object
 		with open(config_file, 'r') as f:
 			s = f.read()
 			j = json.loads(s)
@@ -342,73 +445,71 @@ if __name__ == '__main__':
 				      f"config file", file=sys.stderr)
 
 		# We require that the regex pattern be passed into the program one way or another (via CLI or conf file)
-		# Although it is marked as optional when defined (to allow it to come from conf), ensure we have it now
+		# Although it is marked as optional when defined (to allow it to come from conf), ensure we have it at this point.
 		if args.get('regex_pattern') is None:
 			raise ValueError(f"The argument 'regex pattern' is required, however it was not supplied via the CLI or via "
 			                 f"the configuration file argument")
 
-		"""
-		Coerce comma-delimited strings from the CLI into iterables expected by the main program
-		"""
+	"""
+	Coerce comma-delimited strings from the CLI into iterables expected by the main program
+	"""
 
-		# Handle search paths
-		search_paths = args.get('search_paths')
-		if type(search_paths) is str:
-			search_paths = search_paths.split(',')
-			args['search_paths'] = search_paths
+	# Handle search paths
+	search_paths = args.get('search_paths')
+	if type(search_paths) is str:
+		search_paths = search_paths.split(',')
+		search_paths = [s.strip() for s in search_paths]
+		args['search_paths'] = search_paths
 
-		# Handle excluded subdirectories
-		excluded_subdirectories = args.get('excluded_subdirectories')
-		if type(excluded_subdirectories) is str:
-			excluded_subdirectories = excluded_subdirectories.split(',')
-			args['excluded_subdirectories'] = excluded_subdirectories
-
-		# Handle excluded extensions
-		excluded_extension = args.get('excluded_extension')
-		if type(excluded_extension) is str:
-			excluded_extension = excluded_extension.split(',')
-			args['excluded_extension'] = excluded_extension
-
-		# Handle included extensions
-		included_extension = args.get('included_extension')
-		if type(included_extension) is str:
-			included_extension = included_extension.split(',')
-			args['included_extension'] = included_extension
-
-		# Handle include binary flag
-		truthy_things = ['y', '1', 'true']
-		include_binary_files = str(args.get('include_binary_files')).lower()
-		if include_binary_files in truthy_things:
-			include_binary_files = True
-		else:
-			include_binary_files = False
-		args['include_binary_files'] = include_binary_files
-
-		# Handle print_json
-		truthy_things = ['y', '1', 'true']
-		print_json = str(args.get('print_json')).lower()
-		if print_json in truthy_things:
-			print_json = True
-		else:
-			print_json = False
-		args['print_json'] = print_json
-
-		# Invoke the main program
-		ret_val = main(**args)
-
-		return ret_val  #TODO:  Pick back up here
+	# Handle excluded subdirectories
+	excluded_subdirectories = args.get('excluded_subdirectories')
+	if type(excluded_subdirectories) is str:
+		excluded_subdirectories = excluded_subdirectories.split(',')
+		excluded_subdirectories = [e.strip() for e in excluded_subdirectories]
+		args['excluded_subdirectories'] = excluded_subdirectories
 
 
+	# Handle excluded extensions
+	excluded_extensions = args.get('excluded_extensions')
+	if type(excluded_extensions) is str:
+		excluded_extensions = excluded_extensions.split(',')
+		excluded_extensions = [e.strip() for e in excluded_extensions]
+		args['excluded_extensions'] = excluded_extensions
 
+	# Handle included extensions
+	included_extensions = args.get('included_extensions')
+	if type(included_extensions) is str:
+		included_extensions = included_extensions.split(',')
+		included_extensions = [i.strip() for i in included_extensions]
+		args['included_extensions'] = included_extensions
 
+	# Handle include binary flag
+	truthy_things = ['y', '1', 'true']
+	include_binary_files = str(args.get('include_binary_files')).lower()
+	if include_binary_files in truthy_things:
+		include_binary_files = True
+	else:
+		include_binary_files = False
+	args['include_binary_files'] = include_binary_files
 
+	# Handle print_json
+	truthy_things = ['y', '1', 'true']
+	print_json = str(args.get('print_json')).lower()
+	if print_json in truthy_things:
+		print_json = True
+	else:
+		print_json = False
+	args['print_json'] = print_json
 
-	print("!")
+	# Handle escape_pattern
+	escape_pattern = str(args.get('escape_pattern')).lower()
+	if escape_pattern in truthy_things:
+		escape_pattern = True
+	else:
+		escape_pattern = False
+	args['escape_pattern'] = escape_pattern
 
-
-	# reg_pattern = r'(big)?\ *(BIRD|maN)'
-	# main(pattern=reg_pattern, base_paths=['/Users/areese/projects/word_crawl/test_data', '~/Downloads'], included_extensions=['.txt', '.json'], print_json=True)
-	# main(pattern=reg_pattern, base_paths=['/Users/areese/projects/word_crawl/test_data', '~/Downloads'])
-
+	# Invoke the main program
+	main(**args)
 
 

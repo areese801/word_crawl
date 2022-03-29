@@ -1,7 +1,9 @@
 {
-    "excluded_subdirectories": [".git", ".idea"],
+    "regex_pattern": "(wo)?m[ae]n",
     "excluded_extensions": [".log"],
-    "included_extensions": "",
+    "excluded_subdirectories": [".git", ".idea"],
+    "included_extensions": null,
     "include_binary_files": false,
-    "print_json": false
+    "print_json": true,
+    "escape_pattern": false
 }
