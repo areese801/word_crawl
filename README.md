@@ -10,7 +10,7 @@ maybe) there. There are lots of flags to influence what is included or excluded,
 
 
 ## Requirements
-The python library binaryornot is used under the hood to make determinations (which are good, but imperfect) about which files are, well, Binary or Not.  
+The python library `binaryornot` is used under the hood to make determinations (which are good, but imperfect) about which files are, well, Binary or Not.  
 
 Here are some pages to help with the install and documentation. You'll probably have to jump through some DLL hoops as well if you're a Windows user.  
 * [PyPi](https://pypi.org/project/binaryornot/)
