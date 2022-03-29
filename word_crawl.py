@@ -20,7 +20,8 @@ def main(regex_pattern: str,
          excluded_extensions:list=None,
          included_extensions:list=None,
          include_binary_files:bool=False,
-         print_json:bool=False) -> list :
+         print_json:bool=False,
+         **kwargs) -> list :
 	"""
 
 
@@ -325,7 +326,7 @@ if __name__ == '__main__':
 			s = f.read()
 			j = json.loads(s)
 
-		# For any key in the config thta is not already set in arguments, add it in
+		# For any key in the config that is not already set in arguments, add it in
 		for k in j.keys():
 			v = j[k]
 
@@ -339,6 +340,70 @@ if __name__ == '__main__':
 				print(f"The key '{k}' was read from the config file, '{config_file}', but the same argument was already "
 				      f"passed in from the command line.  The CLI argument will supersede that which was ready from the "
 				      f"config file", file=sys.stderr)
+
+		# We require that the regex pattern be passed into the program one way or another (via CLI or conf file)
+		# Although it is marked as optional when defined (to allow it to come from conf), ensure we have it now
+		if args.get('regex_pattern') is None:
+			raise ValueError(f"The argument 'regex pattern' is required, however it was not supplied via the CLI or via "
+			                 f"the configuration file argument")
+
+		"""
+		Coerce comma-delimited strings from the CLI into iterables expected by the main program
+		"""
+
+		# Handle search paths
+		search_paths = args.get('search_paths')
+		if type(search_paths) is str:
+			search_paths = search_paths.split(',')
+			args['search_paths'] = search_paths
+
+		# Handle excluded subdirectories
+		excluded_subdirectories = args.get('excluded_subdirectories')
+		if type(excluded_subdirectories) is str:
+			excluded_subdirectories = excluded_subdirectories.split(',')
+			args['excluded_subdirectories'] = excluded_subdirectories
+
+		# Handle excluded extensions
+		excluded_extension = args.get('excluded_extension')
+		if type(excluded_extension) is str:
+			excluded_extension = excluded_extension.split(',')
+			args['excluded_extension'] = excluded_extension
+
+		# Handle included extensions
+		included_extension = args.get('included_extension')
+		if type(included_extension) is str:
+			included_extension = included_extension.split(',')
+			args['included_extension'] = included_extension
+
+		# Handle include binary flag
+		truthy_things = ['y', '1', 'true']
+		include_binary_files = str(args.get('include_binary_files')).lower()
+		if include_binary_files in truthy_things:
+			include_binary_files = True
+		else:
+			include_binary_files = False
+		args['include_binary_files'] = include_binary_files
+
+		# Handle print_json
+		truthy_things = ['y', '1', 'true']
+		print_json = str(args.get('print_json')).lower()
+		if print_json in truthy_things:
+			print_json = True
+		else:
+			print_json = False
+		args['print_json'] = print_json
+
+		# Invoke the main program
+		ret_val = main(**args)
+
+		return ret_val  #TODO:  Pick back up here
+
+
+
+
+
+
+	print("!")
 
 
 	# reg_pattern = r'(big)?\ *(BIRD|maN)'
