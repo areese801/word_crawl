@@ -19,6 +19,7 @@ def main(regex_pattern: str,
          excluded_extensions:list=None,
          included_extensions:list=None,
          include_binary_files:bool=False,
+         collapse_whitespace:bool=True,
          print_json:bool=False,
          escape_pattern:bool=False,
          verbose=False,
@@ -39,6 +40,9 @@ def main(regex_pattern: str,
 		Under the hood, we're using the binaryornot library, which is imperfect but does a good job.
 		According to its documentation, binaryornot errs on the side of false positives
 		(That is, classifying a binary file as text)
+	:param collapse_whitespace: Set to True to cause newline characters to be replaced by a single space, followed
+		by multiple spaces, being collapsed into a single space.  This is useful to convert multi-line strings into
+		a single line, which may make regex development a little simpler.
 	:param print_json: Set to True to suppress standard messages printed to stdout in favor of a single JSON payload
 		printed to stdout.  Keep in mind that other (non-JSON) messages might be printed as the program runs, but the
 		clever programmer will leverage sed, awk, grep, jq, etc. to retrieve what is needed
@@ -307,6 +311,22 @@ def main(regex_pattern: str,
 
 			continue
 
+		# Collapse the whitespace as applicable
+		if collapse_whitespace:
+			if verbose is True:
+				print(f"Collapsing whitespace...")
+			orig_string = f_str
+			f_str = re.sub(pattern="\n", repl=" ", string=f_str) # Replace newline with space
+			f_str = re.sub(pattern="\s+", repl = " ", string=f_str) # Replace multiple whitespace (might be tabs) with single.
+
+			if verbose is True:
+				if orig_string == f_str:
+					print(f"Performed Collapse Operations on the string, but the string was unchanged")
+				else:
+					print(f"Performed Collapse Operations on the string.  The old length of the string was {len(orig_string)}.  "
+					      f"The new length of the string is {len(f_str)}")
+
+
 		# Handling for regex vs simple string searches
 		results = re.finditer(pattern=regex, string=f_str)
 
@@ -410,6 +430,11 @@ if __name__ == '__main__':
 	argp.add_argument('-v', '--verbose', required=False, action='store_true', help="If set to True, the program will be "
 	                                                                               "more verbose.")
 
+	argp.add_argument('-w', '--collapse-whitespace', required=False, action='store_true',
+	                  help="If set to True, newline characters will be converted to spaces and repeating space "
+	                       "characters will be replaced by a single space.  Use this flag to convert a multi-line string"
+	                       " to a single line")
+
 	argp.add_argument('-c', '--config-file', required=False, nargs='?', const='conf.json',
 	                  help="A complete path to a json config file where the keys would match the names of the arguments "
 	                       "available to the main program.  Arguments passed into the program via the CLI will supersede"
@@ -446,8 +471,8 @@ if __name__ == '__main__':
 				print(f"Set the argument for '{k}' to the value '{v}', read from the config file '{config_file}'")
 			else:
 				print(f"The key '{k}' was read from the config file, '{config_file}', but the same argument was already "
-				      f"passed in from the command line.  The CLI argument will supersede that which was ready from the "
-				      f"config file", file=sys.stderr)
+				      f"passed in (or defaulted via argparse) from the command line.  The CLI argument will supersede "
+				      f"that which was ready from the config file", file=sys.stderr)
 
 		# We require that the regex pattern be passed into the program one way or another (via CLI or conf file)
 		# Although it is marked as optional when defined (to allow it to come from conf), ensure we have it at this point.
@@ -513,6 +538,15 @@ if __name__ == '__main__':
 	else:
 		escape_pattern = False
 	args['escape_pattern'] = escape_pattern
+
+	# Handle collapse_whitespace
+	truthy_things = ['y', '1', 'true']
+	collapse_whitespace = str(args.get('collapse_whitespace')).lower()
+	if collapse_whitespace in truthy_things:
+		collapse_whitespace = True
+	else:
+		collapse_whitespace = False
+	args['collapse_whitespace'] = collapse_whitespace
 
 	# Invoke the main program
 	main(**args)
